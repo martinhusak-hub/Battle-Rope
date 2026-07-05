@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ROPE // Progresivní trénink</title>
+<style>
+  :root{
+    --bg:#0c0a09;
+    --card:#17130f;
+    --card2:#1f1a15;
+    --line: rgba(245,240,232,0.08);
+    --work:#ff6a1a;
+    --work-dim: rgba(255,106,26,0.14);
+    --rest:#2dd4bf;
+    --rest-dim: rgba(45,212,191,0.14);
+    --text:#f5f0e8;
+    --muted:#8a8079;
+    --danger:#ef4444;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    overflow-x:hidden;
+    min-height:100vh;
+    padding-bottom: 40px;
+  }
+  .noise{
+    position:fixed; inset:0; pointer-events:none; opacity:0.035; z-index:0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100' height='100' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .wrap{ position:relative; z-index:1; max-width:480px; margin:0 auto; padding:18px 16px 0; }
+
+  header{ display:flex; align-items:baseline; justify-content:space-between; padding: 6px 2px 18px; }
+  .brandrow{ display:flex; align-items:center; gap:8px; }
+  .app-icon{ width:30px; height:20px; }
+  .app-icon path{ fill:none; stroke:var(--work); stroke-width:3.5; stroke-linecap:round; }
+  .app-icon path.dim{ stroke:var(--muted); opacity:0.5; }
+
+  .stance-illustration{ width:100%; height:auto; max-height:90px; margin-bottom:10px; display:block; }
+  .stance-illustration path, .stance-illustration circle{
+    fill:none; stroke:var(--text); stroke-width:3; stroke-linecap:round; stroke-linejoin:round;
+  }
+  .stance-illustration .rope{ stroke:var(--work); }
+  .stance-illustration .rope-dim{ stroke:var(--work); opacity:0.35; }
+
+  /* WEEK SELECTOR */
+  .weekbar{ display:flex; gap:8px; overflow-x:auto; padding-bottom:14px; margin-bottom: 6px; scrollbar-width:none;}
+  .weekbar::-webkit-scrollbar{display:none;}
+  .weekchip{
+    flex:0 0 auto; padding:9px 14px; border-radius:999px; border:1px solid var(--line);
+    background:var(--card); color:var(--muted); font-size:13px; font-weight:700; white-space:nowrap;
+  }
+  .weekchip.active{ background:var(--work); border-color:var(--work); color:#0c0a09; }
+
+  .plan-desc{ font-size:12.5px; color:var(--muted); line-height:1.5; padding: 0 2px 16px; }
+  .plan-desc b{ color:var(--text); }
+
+  /* MAIN TIMER CARD */
+  .stage{
+    position:relative;
+    background: var(--card);
+    border:1px solid var(--line);
+    border-radius:26px;
+    padding: 26px 20px 22px;
+    overflow:hidden;
+    transition: background 0.4s ease;
+  }
+  .stage.phase-work{ background: linear-gradient(180deg, var(--work-dim), var(--card) 65%); }
+  .stage.phase-rest{ background: linear-gradient(180deg, var(--rest-dim), var(--card) 65%); }
+
+  .phase-row{ display:flex; align-items:center; justify-content:space-between; margin-bottom: 4px;}
+  .phase-tag{
+    font-size:11.5px; font-weight:900; letter-spacing:0.22em; padding:6px 12px; border-radius:8px;
+    background: var(--card2); color:var(--muted);
+  }
+  .phase-tag.work{ background:var(--work); color:#0c0a09; }
+  .phase-tag.rest{ background:var(--rest); color:#0c0a09; }
+  .round-tag{ font-size:12px; color:var(--muted); font-weight:700; font-variant-numeric: tabular-nums;}
+
+  canvas#rope{ display:block; width:100%; height:64px; margin: 6px 0 0; }
+
+  .exname{
+    text-align:center; font-size: 26px; font-weight:900; letter-spacing:-0.01em;
+    margin: 6px 0 2px; min-height: 34px;
+  }
+  .nextname{ text-align:center; font-size:12.5px; color:var(--muted); margin-bottom: 14px; }
+  .nextname b{ color:var(--text); }
+
+  .timer{
+    text-align:center; font-size: 96px; font-weight:900; line-height:1;
+    font-variant-numeric: tabular-nums; letter-spacing:-0.02em;
+    margin: 4px 0 6px;
+    font-style: italic;
+  }
+  .timer.pulse{ animation: pulse 1s ease-in-out; }
+  @keyframes pulse{ 0%{transform:scale(1);} 30%{transform:scale(1.08);} 100%{transform:scale(1);} }
+
+  .progressbar{ height:6px; border-radius:4px; background:var(--card2); overflow:hidden; margin: 10px 4px 2px;}
+  .progressbar > div{ height:100%; background:var(--work); transition: width 0.2s linear; }
+  .stage.phase-rest .progressbar > div{ background:var(--rest); }
+
+  .sessionbar{ display:flex; gap:4px; margin: 16px 2px 0; }
+  .sessionbar span{ flex:1; height:4px; border-radius:3px; background:var(--card2); }
+  .sessionbar span.done{ background: var(--muted); }
+  .sessionbar span.active{ background: var(--work); }
+
+  .controls{ display:flex; gap:10px; margin-top: 20px; }
+  .btn{
+    flex:1; border:none; border-radius:16px; padding:16px 0; font-size:15px; font-weight:800;
+    letter-spacing:0.02em; background:var(--card2); color:var(--text); cursor:pointer;
+  }
+  .btn.primary{ background:var(--work); color:#0c0a09; }
+  .btn.ghost{ background:transparent; border:1px solid var(--line); color:var(--muted); }
+  .btn:active{ transform: scale(0.97); }
+
+  .done-screen{ text-align:center; padding: 30px 4px 6px; }
+  .done-screen .big{ font-size:22px; font-weight:900; margin-bottom:6px;}
+  .done-screen .sub{ font-size:13px; color:var(--muted); margin-bottom: 20px; }
+
+  /* STYLE LIST */
+  .section-title{ font-size:12px; font-weight:900; letter-spacing:0.18em; color:var(--muted); margin: 26px 4px 10px; }
+  .stylecard{
+    padding:13px 14px; border-radius:16px;
+    background:var(--card); border:1px solid var(--line); margin-bottom:9px;
+    cursor:pointer;
+  }
+  .stylecard-head{ display:flex; align-items:center; gap:12px; }
+  .styledot{ width:9px; height:9px; border-radius:50%; background:var(--work); flex:0 0 auto; }
+  .stylename{ font-size:14.5px; font-weight:700; }
+  .styletip{ font-size:11.5px; color:var(--muted); margin-top:1px; }
+  .chev{ font-size:20px; color:var(--muted); transform: rotate(90deg); transition: transform 0.25s ease; flex:0 0 auto; }
+  .chev.open{ transform: rotate(270deg); }
+  .styledetail{ max-height:0; overflow:hidden; transition: max-height 0.3s ease, opacity 0.3s ease; opacity:0; }
+  .styledetail.open{ max-height:260px; opacity:1; margin-top:12px; }
+  .detail-row{ margin-bottom:10px; }
+  .detail-row:last-child{ margin-bottom:0; }
+  .detail-label{ font-size:10.5px; font-weight:900; letter-spacing:0.16em; color:var(--work); }
+  .detail-row p{ font-size:13px; color:var(--text); line-height:1.5; margin: 4px 0 0; }
+
+  footer{ text-align:center; font-size:11px; color: #4a4340; padding: 30px 0 10px; letter-spacing:0.08em;}
+</style>
+</head>
+<body>
+<div class="noise"></div>
+<div class="wrap">
+
+  <header>
+    <div class="brandrow">
+      <svg class="app-icon" viewBox="0 0 60 40"><path d="M4 20 Q16 4 30 20 T56 20" /><path d="M4 20 Q16 36 30 20 T56 20" class="dim"/></svg>
+      <div class="brand">ROPE<b>//</b>TRAINER</div>
+    </div>
+    <div class="clock" id="clock">--:--</div>
+  </header>
+
+  <div class="weekbar" id="weekbar"></div>
+  <div class="plan-desc" id="planDesc"></div>
+
+  <div class="stage" id="stage">
+    <div class="phase-row">
+      <div class="phase-tag" id="phaseTag">PŘIPRAV SE</div>
+      <div class="round-tag" id="roundTag">Kolo 1/1</div>
+    </div>
+
+    <canvas id="rope" width="440" height="64"></canvas>
+
+    <div class="exname" id="exName">Alternating Waves</div>
+    <div class="nextname" id="nextName">&nbsp;</div>
+
+    <div class="timer" id="timerNum">10</div>
+    <div class="progressbar"><div id="progressFill" style="width:100%"></div></div>
+
+    <div class="sessionbar" id="sessionBar"></div>
+
+    <div class="controls">
+      <button class="btn ghost" id="resetBtn">Reset</button>
+      <button class="btn primary" id="startBtn">Start</button>
+    </div>
+  </div>
+
+  <div class="section-title">STYLY V TOMTO TÝDNU</div>
+  <div id="styleList"></div>
+
+  <footer>DRŽ FORMU · NE RYCHLOST</footer>
+</div>
+
+<script>
+// ---------- DATA ----------
+const ALL_STYLES = [
+  {name:"Alternating Waves",
+   tip:"Základ. Střídavé vlny, jedna ruka nahoru, druhá dolů.",
+   stance:"Nohy na šířku ramen, mírný podřep (kolena i kyčle pokrčené), záda rovná, core napnutý jako bys čekal ránu do břicha.",
+   execution:"Střídavě zvedej a spouštěj paže — když jedna jde nahoru, druhá dolů. Pohyb vychází z ramen a lopatek, ne ze zápěstí. Lano by mělo vytvářet plynulé, stejně velké vlny na obou stranách.",
+   icon:`<circle cx="34" cy="18" r="7"/><path d="M34 25 L32 55"/><path d="M32 55 L20 75 L26 98"/><path d="M32 55 L46 74 L50 98"/><path d="M33 30 L54 14"/><path d="M33 34 L58 52"/><path d="M54 14 Q75 4 96 14 T136 14" class="rope"/><path d="M58 52 Q78 62 98 52 T136 52" class="rope rope-dim"/>`},
+  {name:"Double Waves",
+   tip:"Obě ruce zvedej a spouštěj současně, plný rozsah.",
+   stance:"Mírně širší stoj než u alternating, váha víc na patách, kolena pokrčená pro stabilitu při silnějším impulzu.",
+   execution:"Obě paže současně vytáhni nad úroveň ramen a prudce spusť dolů — impulz by měl vycházet z boků a nohou (mírné podřepnutí a natažení), ne jen z paží.",
+   icon:`<circle cx="34" cy="18" r="7"/><path d="M34 25 L32 55"/><path d="M32 55 L18 76 L24 98"/><path d="M32 55 L48 76 L52 98"/><path d="M33 30 L48 11"/><path d="M33 33 L60 16"/><path d="M50 12 Q85 -8 118 12 Q130 20 136 28" class="rope"/>`},
+  {name:"Clockwise Circles",
+   tip:"Krouž lanem ve směru hodinových ručiček, stabilní core.",
+   stance:"Stabilní stoj, jedna noha mírně vpřed pro rovnováhu, trup zpevněný proti rotaci.",
+   execution:"Kruž zápěstím a paží plynule ve směru hodinových ručiček. Kruh by měl být pravidelný a kontrolovaný — core drží trup, aby se nezačal otáčet spolu s rukou.",
+   icon:`<circle cx="34" cy="18" r="7"/><path d="M34 25 L32 55"/><path d="M32 55 L22 78 L28 98"/><path d="M32 55 L44 78 L48 98"/><path d="M33 32 L58 30"/><circle cx="70" cy="26" r="13" class="rope" fill="none"/><path d="M83 26 L89 22 M83 26 L89 30" class="rope"/><path d="M83 26 Q108 22 132 30" class="rope rope-dim"/>`},
+  {name:"Snakes",
+   tip:"Lano po zemi ze strany na stranu, nízké těžiště.",
+   stance:"Nízký podřep, chodidla o něco širší než u ostatních variant, těžiště níž k zemi.",
+   execution:"Obě paže pohybují lanem společně ze strany na stranu při zemi, minimální vertikální pohyb. Lano by mělo klouzat po podlaze jako had, ne poskakovat.",
+   icon:`<circle cx="34" cy="24" r="7"/><path d="M34 31 L30 58"/><path d="M30 58 L14 80 L20 98"/><path d="M30 58 L44 80 L46 98"/><path d="M32 44 L54 56"/><path d="M32 48 L56 62"/><path d="M54 58 Q74 50 94 58 T134 58" class="rope"/>`},
+  {name:"In-and-Out Waves",
+   tip:"Vlny s přiblížením a oddálením rukou od těla.",
+   stance:"Střední podřep, paže mírně pokrčené v loktech, chodidla pevně zakotvená.",
+   execution:"Střídej vlny s přitažením rukou blízko k tělu a odtažením od těla — mění se tím amplituda pohybu. Core kontroluje stabilitu trupu při změně vzdálenosti paží.",
+   icon:`<circle cx="34" cy="20" r="7"/><path d="M34 27 L32 56"/><path d="M32 56 L19 77 L25 98"/><path d="M32 56 L45 77 L49 98"/><path d="M33 31 L52 28"/><path d="M52 28 L48 20 M52 28 L48 36" class="rope-dim"/><path d="M52 28 Q92 6 132 28" class="rope"/>`}
+];
+
+const WEEKS = [
+  { id:1, label:"Týden 1", work:10, rest:50, rounds:5, styleCount:5,
+    desc:"Cíl: čistá forma na 10s bez rozpadu, i s více styly v rotaci." },
+  { id:2, label:"Týden 2", work:15, rest:45, rounds:6, styleCount:5,
+    desc:"Prodluž práci na 15s, forma musí držet do konce intervalu." },
+  { id:3, label:"Týden 3", work:20, rest:40, rounds:6, styleCount:5,
+    desc:"20s práce, kratší odpočinek — víc zátěže na kondici." },
+  { id:4, label:"Týden 4", work:25, rest:35, rounds:6, styleCount:5,
+    desc:"Blížíme se plnému okruhu, odpočinek dál klesá." },
+  { id:5, label:"Plný okruh", work:30, rest:40, rounds:3, styleCount:5,
+    desc:"Originální okruh: 5 stylů × 3 kola, 30s práce / 40s odpočinek." }
+];
+
+// ---------- STATE ----------
+let currentWeekIdx = 0;
+let sequence = [];      // flat list of {type:'work'|'rest', style, duration}
+let seqIndex = 0;
+let timeLeft = 0;
+let running = false;
+let tickHandle = null;
+let audioCtx = null;
+
+const el = id => document.getElementById(id);
+
+// ---------- BUILD SEQUENCE ----------
+function buildSequence(week){
+  const styles = ALL_STYLES.slice(0, week.styleCount);
+  const seq = [];
+  for(let r=0; r<week.rounds; r++){
+    styles.forEach((s, i) => {
+      seq.push({type:'work', style:s.name, duration: week.work});
+      const isLast = (r === week.rounds-1) && (i === styles.length-1);
+      if(!isLast) seq.push({type:'rest', style:s.name, duration: week.rest});
+    });
+  }
+  return seq;
+}
+
+function loadWeek(idx){
+  currentWeekIdx = idx;
+  localStorage.setItem('ropeapp_week', idx);
+  const week = WEEKS[idx];
+  sequence = buildSequence(week);
+  seqIndex = 0;
+  running = false;
+  clearInterval(tickHandle);
+  timeLeft = sequence[0].duration;
+  renderWeekBar();
+  renderPlanDesc(week);
+  renderStyleList(week);
+  renderStage();
+  renderSessionBar();
+  el('startBtn').textContent = 'Start';
+}
+
+// ---------- RENDER ----------
+function renderWeekBar(){
+  const bar = el('weekbar');
+  bar.innerHTML = '';
+  WEEKS.forEach((w, i) => {
+    const chip = document.createElement('button');
+    chip.className = 'weekchip' + (i===currentWeekIdx ? ' active' : '');
+    chip.textContent = w.label;
+    chip.onclick = () => loadWeek(i);
+    bar.appendChild(chip);
+  });
+}
+
+function renderPlanDesc(week){
+  el('planDesc').innerHTML = `<b>${week.work}s práce / ${week.rest}s odpočinek</b> · ${week.rounds} kol · ${week.desc}`;
+}
+
+function renderStyleList(week){
+  const list = el('styleList');
+  list.innerHTML = '';
+  ALL_STYLES.forEach((s, i) => {
+    const card = document.createElement('div');
+    card.className = 'stylecard';
+    card.innerHTML = `
+      <div class="stylecard-head">
+        <div class="styledot"></div>
+        <div style="flex:1;">
+          <div class="stylename">${s.name}</div>
+          <div class="styletip">${s.tip}</div>
+        </div>
+        <div class="chev" id="chev-${i}">›</div>
+      </div>
+      <div class="styledetail" id="detail-${i}">
+        <svg class="stance-illustration" viewBox="0 0 140 100">${s.icon}</svg>
+        <div class="detail-row"><span class="detail-label">POSTOJ</span><p>${s.stance}</p></div>
+        <div class="detail-row"><span class="detail-label">PROVEDENÍ</span><p>${s.execution}</p></div>
+      </div>`;
+    card.querySelector('.stylecard-head').onclick = () => toggleStyle(i);
+    list.appendChild(card);
+  });
+}
+
+function toggleStyle(i){
+  const detail = el('detail-'+i);
+  const chev = el('chev-'+i);
+  const open = detail.classList.toggle('open');
+  chev.classList.toggle('open', open);
+}
+
+function renderSessionBar(){
+  const bar = el('sessionBar');
+  bar.innerHTML = '';
+  sequence.forEach((step, i) => {
+    if(step.type !== 'work') return;
+    const span = document.createElement('span');
+    if(i < seqIndex) span.classList.add('done');
+    if(i === seqIndex) span.classList.add('active');
+    bar.appendChild(span);
+  });
+}
+
+function totalWorkCount(){ return sequence.filter(s=>s.type==='work').length; }
+function workIndexUpTo(i){ return sequence.slice(0,i+1).filter(s=>s.type==='work').length; }
+
+function renderStage(){
+  const step = sequence[seqIndex];
+  const stage = el('stage');
+  const tag = el('phaseTag');
+  stage.classList.remove('phase-work','phase-rest');
+
+  if(step.type === 'work'){
+    stage.classList.add('phase-work');
+    tag.textContent = 'PRACUJ';
+    tag.className = 'phase-tag work';
+    el('exName').textContent = step.style;
+    const next = sequence[seqIndex+1];
+    el('nextName').innerHTML = next ? `Pak: <b>${next.type==='rest' ? 'odpočinek' : next.style}</b>` : 'Poslední interval';
+  } else {
+    stage.classList.add('phase-rest');
+    tag.textContent = 'ODPOČINEK';
+    tag.className = 'phase-tag rest';
+    el('exName').textContent = 'Nadechni se';
+    const next = sequence[seqIndex+1];
+    el('nextName').innerHTML = next ? `Další: <b>${next.style}</b>` : '';
+  }
+
+  const wDone = sequence.filter((s,i)=>s.type==='work' && i<seqIndex).length + (step.type==='work'?1:0);
+  const wTotal = totalWorkCount();
+  const week = WEEKS[currentWeekIdx];
+  const currentRound = Math.min(week.rounds, Math.ceil(wDone / week.styleCount));
+  el('roundTag').textContent = `Kolo ${currentRound}/${week.rounds}`;
+
+  timeLeft = step.duration;
+  el('timerNum').textContent = timeLeft;
+  updateProgress(step.duration);
+  renderSessionBar();
+  drawRope(step.type === 'work', step.style);
+}
+
+function updateProgress(duration){
+  const pct = (timeLeft / duration) * 100;
+  el('progressFill').style.width = pct + '%';
+}
+
+// ---------- ROPE ANIMATION ----------
+const ropeCanvas = el('rope');
+const ctx2d = ropeCanvas.getContext('2d');
+let ropeAnimHandle = null;
+let ropePhase = 0;
+
+function drawRope(active, styleName){
+  cancelAnimationFrame(ropeAnimHandle);
+  const w = ropeCanvas.width, h = ropeCanvas.height, midY = h/2;
+  const color = active ? '#ff6a1a' : '#3a332c';
+
+  function envelope(x){ return Math.sin((x/w)*Math.PI); }
+
+  function frame(){
+    ctx2d.clearRect(0,0,w,h);
+    ctx2d.strokeStyle = color;
+    ctx2d.lineWidth = 5;
+    ctx2d.lineCap = 'round';
+
+    if(!active){
+      // resting: near-flat line
+      ctx2d.beginPath();
+      for(let x=0; x<=w; x+=4){
+        const y = midY + Math.sin(x*0.02 + ropePhase) * 3 * envelope(x);
+        if(x===0) ctx2d.moveTo(x,y); else ctx2d.lineTo(x,y);
+      }
+      ctx2d.stroke();
+      ropePhase += 0.05;
+
+    } else if(styleName === 'Alternating Waves'){
+      // two waves, offset by half a cycle = one arm up while other is down
+      const amp = 18;
+      ['left','right'].forEach((side, i) => {
+        ctx2d.beginPath();
+        for(let x=0; x<=w/2+10; x+=4){
+          const px = side==='left' ? x : w-x;
+          const y = midY + Math.sin(x*0.06 + ropePhase + (i*Math.PI)) * amp * envelope(px);
+          if(x===0) ctx2d.moveTo(px,y); else ctx2d.lineTo(px,y);
+        }
+        ctx2d.stroke();
+      });
+      ropePhase += 0.35;
+
+    } else if(styleName === 'Double Waves'){
+      // single symmetric wave, both hands in phase, bigger amplitude
+      const amp = 24;
+      ctx2d.beginPath();
+      for(let x=0; x<=w; x+=4){
+        const y = midY + Math.sin(x*0.05 + ropePhase) * amp * envelope(x);
+        if(x===0) ctx2d.moveTo(x,y); else ctx2d.lineTo(x,y);
+      }
+      ctx2d.stroke();
+      ropePhase += 0.4;
+
+    } else if(styleName === 'Clockwise Circles'){
+      // rotating loop near the anchor point
+      const cx = w*0.22, cy = midY, r = 20;
+      ctx2d.beginPath();
+      ctx2d.arc(cx, cy, r, ropePhase, ropePhase + Math.PI*1.6);
+      ctx2d.stroke();
+      // trailing line to far end
+      ctx2d.beginPath();
+      const tipX = cx + Math.cos(ropePhase)*r;
+      const tipY = cy + Math.sin(ropePhase)*r;
+      ctx2d.moveTo(tipX, tipY);
+      ctx2d.lineTo(w-10, midY + Math.sin(ropePhase*2)*4);
+      ctx2d.stroke();
+      ropePhase += 0.18;
+
+    } else if(styleName === 'Snakes'){
+      // low, fast horizontal slither, whole rope shifts side to side near the ground
+      const amp = 10;
+      ctx2d.beginPath();
+      for(let x=0; x<=w; x+=4){
+        const y = midY + 14 + Math.sin(x*0.09 + ropePhase) * amp * envelope(x);
+        if(x===0) ctx2d.moveTo(x,y); else ctx2d.lineTo(x,y);
+      }
+      ctx2d.stroke();
+      ropePhase += 0.5;
+
+    } else if(styleName === 'In-and-Out Waves'){
+      // amplitude breathes bigger/smaller (arms pull in and push out)
+      const breathe = (Math.sin(ropePhase*0.6) + 1) / 2; // 0..1
+      const amp = 8 + breathe * 22;
+      ctx2d.beginPath();
+      for(let x=0; x<=w; x+=4){
+        const y = midY + Math.sin(x*0.05 + ropePhase*1.5) * amp * envelope(x);
+        if(x===0) ctx2d.moveTo(x,y); else ctx2d.lineTo(x,y);
+      }
+      ctx2d.stroke();
+      ropePhase += 0.3;
+
+    } else {
+      // fallback generic wave
+      const amp = 20;
+      ctx2d.beginPath();
+      for(let x=0; x<=w; x+=4){
+        const y = midY + Math.sin(x*0.045 + ropePhase) * amp * envelope(x);
+        if(x===0) ctx2d.moveTo(x,y); else ctx2d.lineTo(x,y);
+      }
+      ctx2d.stroke();
+      ropePhase += 0.35;
+    }
+
+    ropeAnimHandle = requestAnimationFrame(frame);
+  }
+  frame();
+}
+
+// ---------- AUDIO CUES ----------
+function beep(freq, dur){
+  try{
+    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.frequency.value = freq;
+    o.connect(g); g.connect(audioCtx.destination);
+    g.gain.setValueAtTime(0.15, audioCtx.currentTime);
+    o.start();
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    o.stop(audioCtx.currentTime + dur);
+  }catch(e){}
+}
+
+// ---------- TIMER ENGINE ----------
+function tick(){
+  timeLeft -= 1;
+  const step = sequence[seqIndex];
+  if(timeLeft <= 3 && timeLeft > 0){
+    beep(880, 0.08);
+    el('timerNum').classList.add('pulse');
+    setTimeout(()=>el('timerNum').classList.remove('pulse'), 200);
+  }
+  if(timeLeft <= 0){
+    if(seqIndex >= sequence.length - 1){
+      finishSession();
+      return;
+    }
+    beep(step.type==='work' ? 440 : 660, 0.18);
+    seqIndex += 1;
+    renderStage();
+    return;
+  }
+  el('timerNum').textContent = timeLeft;
+  updateProgress(step.duration);
+}
+
+function startPause(){
+  if(running){
+    running = false;
+    clearInterval(tickHandle);
+    el('startBtn').textContent = 'Pokračovat';
+  } else {
+    running = true;
+    el('startBtn').textContent = 'Pauza';
+    tickHandle = setInterval(tick, 1000);
+  }
+}
+
+function resetSession(){
+  running = false;
+  clearInterval(tickHandle);
+  seqIndex = 0;
+  el('startBtn').textContent = 'Start';
+  renderStage();
+}
+
+function finishSession(){
+  running = false;
+  clearInterval(tickHandle);
+  beep(990, 0.3);
+  const stage = el('stage');
+  stage.classList.remove('phase-work','phase-rest');
+  stage.innerHTML = `
+    <div class="done-screen">
+      <div class="big">Hotovo 💪</div>
+      <div class="sub">${WEEKS[currentWeekIdx].label} dokončen. Zapiš si, kolikátý interval byl poslední s čistou formou.</div>
+      <div class="controls">
+        <button class="btn ghost" id="againBtn">Zopakovat</button>
+        <button class="btn primary" id="nextWeekBtn">${currentWeekIdx < WEEKS.length-1 ? 'Další týden' : 'Od začátku'}</button>
+      </div>
+    </div>`;
+  el('againBtn').onclick = () => loadWeek(currentWeekIdx);
+  el('nextWeekBtn').onclick = () => loadWeek(currentWeekIdx < WEEKS.length-1 ? currentWeekIdx+1 : 0);
+}
+
+// ---------- CLOCK ----------
+function updateClock(){
+  const d = new Date();
+  el('clock').textContent = d.toTimeString().slice(0,5);
+}
+setInterval(updateClock, 30000);
+updateClock();
+
+// ---------- INIT ----------
+el('startBtn').addEventListener('click', startPause);
+el('resetBtn').addEventListener('click', resetSession);
+
+const saved = parseInt(localStorage.getItem('ropeapp_week'));
+loadWeek(Number.isInteger(saved) && saved >=0 && saved < WEEKS.length ? saved : 0);
+</script>
+</body>
+</html>
